@@ -90,4 +90,7 @@ class VAE_Encoder(nn.Sequential):
         """
         x = mean + stdev * noise
 
+        #scaling the value 
+        x *=0.18215
+
         return x 

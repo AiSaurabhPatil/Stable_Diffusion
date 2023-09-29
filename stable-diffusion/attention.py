@@ -49,10 +49,10 @@ class SelfAttention(nn.Module):
         output = attention @ value
 
         # (Batch_Size, H, Seq_Len, Dim / H) -> (Batch_Size, Seq_Len, H, Dim / H)
-        output = output.transpose(1, 2) 
+        output = output.transpose(1, 2).contiguous()
 
         # (Batch_Size, Seq_Len, H, Dim / H) -> (Batch_Size, Seq_Len, Dim)
-        output = output.reshape(input_shape) 
+        output = output.view(input_shape) 
 
         # (Batch_Size, Seq_Len, Dim) -> (Batch_Size, Seq_Len, Dim)
         output = self.output_proj(output) 
@@ -61,3 +61,39 @@ class SelfAttention(nn.Module):
         return output
 
 
+class CrossAttention(nn.Module):
+    def __init__(self , n_heads: int , d_embed : int , d_cross: int , input_proj_bias= True , output_proj_bias=True):
+        super().__init__()
+        self.query_proj = nn.Linear(d_embed , d_embed, bias=input_proj_bias)
+        self.key_proj = nn.Linear(d_cross , d_embed, bias=input_proj_bias)
+        self.value_proj = nn.Linear(d_cross , d_embed, bias=input_proj_bias)
+        self.output_proj = nn.Linear(d_embed , d_embed,bias=output_proj_bias)
+        self.n_heads = n_heads
+        self.d_head = d_embed // n_heads
+
+    def forward(self , x , y):
+        # x (latent): # (Batch_Size, Seq_Len_Q, Dim_Q)
+        # y (context): # (Batch_Size, Seq_Len_KV, Dim_KV) = (Batch_Size, 77, 768)
+        input_shape = x.shape 
+        batch_size, sequence_length , d_embed = input_shape
+        intermidiate_shape = (batch_size , -1 , self.n_heads ,self.d_head )
+
+        query = self.query_proj(x)
+        key = self.key_proj(y)
+        value= self.value_proj(y)
+
+        query = query.view(intermidiate_shape).transpose(1,2)
+        key = key.view(intermidiate_shape).transpose(1,2)
+        value = value.view(intermidiate_shape).transpose(1,2)
+
+        attention = query @ key.transpose(-1, -2)
+        attention /= math.sqrt(self.d_head)
+        attention = F.softmax(attention, dim=-1)
+
+        output = attention @ value
+        output = output.transpose(1,2).contiguous()
+        output = output.view(input_shape)
+
+        output = self.output_proj(output)   
+
+        return output
